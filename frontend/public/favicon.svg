@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Sauti Salama</title>
+  <rect width="64" height="64" rx="14" fill="#047857"/>
+  <path d="M32 10 49 16v14c0 11-7.2 19.1-17 24-9.8-4.9-17-13-17-24V16l17-6Z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m23 31 6 6 12-13" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
