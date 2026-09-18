@@ -1,0 +1,151 @@
+import mongoose from "mongoose";
+
+import {
+  processVerificationRequest,
+  getVerificationRequests,
+  getVerificationRequestById,
+  getVerificationResult,
+  createVerificationResult,
+} from "../services/verificationService.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+
+export const createVerification = asyncHandler(
+  async (req, res) => {
+    const { claim } = req.body;
+
+    if (!claim || !claim.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Claim is required.",
+      });
+    }
+
+    const verification =
+      await processVerificationRequest(req.body);
+
+    return res.status(201).json({
+      success: true,
+      message: "Verification completed successfully.",
+      data: verification,
+    });
+  }
+);
+
+export async function getVerifications(req, res) {
+  try {
+    const requests = await getVerificationRequests(req.query);
+
+    return res.status(200).json({
+      success: true,
+      count: requests.length,
+      data: requests,
+    });
+  } catch (error) {
+    console.error("Get verifications error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve verification requests.",
+    });
+  }
+}
+
+export async function getVerification(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification request ID.",
+      });
+    }
+
+    const request = await getVerificationRequestById(id);
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Verification request not found.",
+      });
+    }
+
+    const result = await getVerificationResult(id);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        request,
+        result,
+      },
+    });
+  } catch (error) {
+    console.error("Get verification error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve verification request.",
+    });
+  }
+}
+
+export async function createResult(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification request ID.",
+      });
+    }
+
+    const request = await getVerificationRequestById(id);
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Verification request not found.",
+      });
+    }
+
+    const {
+      truthStatus,
+      riskLevel,
+      summary,
+    } = req.body;
+
+    if (!truthStatus || !riskLevel || !summary) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "truthStatus, riskLevel and summary are required.",
+      });
+    }
+
+    const existingResult = await getVerificationResult(id);
+
+    if (existingResult) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "A verification result already exists for this request.",
+      });
+    }
+
+    const result = await createVerificationResult(id, req.body);
+
+    return res.status(201).json({
+      success: true,
+      message: "Verification result created successfully.",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Create verification result error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create verification result.",
+    });
+  }
+}
