@@ -6,6 +6,8 @@ import {
   getVerificationRequestById,
   getVerificationResult,
   createVerificationResult,
+  getReviewQueue,
+  resolveVerificationReview,
 } from "../services/verificationService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -146,6 +148,54 @@ export async function createResult(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to create verification result.",
+    });
+  }
+}
+
+export async function getReviewQueueController(req, res) {
+  try {
+    const queue = await getReviewQueue();
+    return res.status(200).json({
+      success: true,
+      count: queue.length,
+      data: queue,
+    });
+  } catch (error) {
+    console.error("Get review queue error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve review queue.",
+    });
+  }
+}
+
+export async function resolveReviewController(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification request ID.",
+      });
+    }
+
+    const result = await resolveVerificationReview(id, req.body, req.user.userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Human review decision recorded successfully.",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Resolve review error:", error);
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Failed to resolve the review.",
+      error: {
+        code: error.code || "REVIEW_RESOLUTION_FAILED",
+      },
     });
   }
 }

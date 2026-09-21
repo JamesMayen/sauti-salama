@@ -12,6 +12,7 @@ import {
   X,
   LogOut,
   UserCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuthContext } from "../context/AuthContext.jsx";
@@ -28,6 +29,12 @@ const navigation = [
     path: "/dashboard/verification",
     icon: ShieldCheck,
     roles: ["admin", "moderator", "analyst"],
+  },
+  {
+    label: "Review Queue",
+    path: "/dashboard/review-queue",
+    icon: ShieldAlert,
+    roles: ["admin", "moderator"],
   },
   {
     label: "Reports",

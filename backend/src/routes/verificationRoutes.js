@@ -5,6 +5,8 @@ import {
   getVerifications,
   getVerification,
   createResult,
+  getReviewQueueController,
+  resolveReviewController,
 } from "../controllers/verificationController.js";
 
 import { validate } from "../middleware/validate.js";
@@ -35,6 +37,21 @@ router.get(
   "/",
   authenticate,
   getVerifications
+);
+
+router.get(
+  "/review-queue",
+  authenticate,
+  authorizeRoles("admin", "moderator"),
+  getReviewQueueController
+);
+
+router.post(
+  "/:id/review",
+  authenticate,
+  authorizeRoles("admin", "moderator"),
+  validate(createVerificationResultSchema),
+  resolveReviewController
 );
 
 router.get(

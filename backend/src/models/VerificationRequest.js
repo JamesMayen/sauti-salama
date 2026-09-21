@@ -41,6 +41,35 @@ const verificationRequestSchema = new mongoose.Schema(
       default: "pending",
     },
 
+    reviewRequired: {
+      type: Boolean,
+      default: false,
+    },
+
+    reviewReason: {
+      type: String,
+      enum: ["insufficient_evidence", "manual_review", "technical_failure", null],
+      default: null,
+    },
+
+    evidenceSufficiency: {
+      type: String,
+      enum: ["sufficient", "conflicting", "insufficient", null],
+      default: null,
+    },
+
+    reviewStatus: {
+      type: String,
+      enum: ["pending", "in_review", "resolved", "dismissed", null],
+      default: null,
+    },
+
+    reviewDecision: {
+      type: String,
+      enum: ["verified", "partially_verified", "unverified", "contested", "false", null],
+      default: null,
+    },
+
     priority: {
       type: String,
       enum: ["low", "normal", "high", "urgent"],

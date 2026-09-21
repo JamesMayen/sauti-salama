@@ -68,10 +68,101 @@ const evidenceSchema = new mongoose.Schema(
       maxlength: 1000,
       default: null,
     },
+
+    relationshipToClaim: {
+      type: String,
+      enum: ["supports", "contradicts", "contextualizes", "inconclusive", null],
+      default: null,
+    },
   },
   {
     _id: false,
   }
+);
+
+const aiAssessmentSchema = new mongoose.Schema(
+  {
+    truthStatus: {
+      type: String,
+      enum: ["verified", "unverified", "contested", "false", "partially_verified", null],
+      default: null,
+    },
+    riskLevel: {
+      type: String,
+      enum: ["low", "medium", "high", "critical", null],
+      default: null,
+    },
+    confidence: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: null,
+    },
+    summary: {
+      type: String,
+      maxlength: 2000,
+      default: null,
+    },
+    reasoning: {
+      type: String,
+      maxlength: 5000,
+      default: null,
+    },
+    evidence: {
+      type: [evidenceSchema],
+      default: [],
+    },
+    uncertainties: {
+      type: [String],
+      maxlength: 20,
+      default: [],
+    },
+    recommendedAction: {
+      type: String,
+      maxlength: 2000,
+      default: null,
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
+const humanReviewSchema = new mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: ["pending", "in_review", "resolved", "dismissed"],
+      default: "pending",
+    },
+    decision: {
+      type: String,
+      enum: ["verified", "partially_verified", "unverified", "contested", "false", null],
+      default: null,
+    },
+    reason: {
+      type: String,
+      enum: ["insufficient_evidence", "manual_review", "technical_failure", null],
+      default: null,
+    },
+    notes: {
+      type: String,
+      maxlength: 2000,
+      default: null,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
 );
 
 const verificationResultSchema = new mongoose.Schema(
@@ -137,6 +228,23 @@ const verificationResultSchema = new mongoose.Schema(
       default: null,
     },
 
+    evidenceSufficiency: {
+      type: String,
+      enum: ["sufficient", "conflicting", "insufficient"],
+      default: "sufficient",
+    },
+
+    reviewRequired: {
+      type: Boolean,
+      default: false,
+    },
+
+    reviewReason: {
+      type: String,
+      enum: ["insufficient_evidence", "manual_review", "technical_failure", null],
+      default: null,
+    },
+
     verifiedAt: {
       type: Date,
       default: null,
@@ -151,6 +259,16 @@ const verificationResultSchema = new mongoose.Schema(
     aiGenerated: {
       type: Boolean,
       default: false,
+    },
+
+    aiAssessment: {
+      type: aiAssessmentSchema,
+      default: null,
+    },
+
+    humanReview: {
+      type: humanReviewSchema,
+      default: null,
     },
   },
   {

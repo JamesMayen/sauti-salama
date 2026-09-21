@@ -25,6 +25,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 
 import Reports from "./pages/dashboard/Reports.jsx";
 import Verification from "./pages/dashboard/Verification.jsx";
+import ReviewQueue from "./pages/dashboard/ReviewQueue.jsx";
 import DashboardAlerts from "./pages/dashboard/Alerts.jsx";
 import DashboardCivic from "./pages/dashboard/Civic.jsx";
 import Sources from "./pages/dashboard/Sources.jsx";
@@ -110,6 +111,11 @@ export default function App() {
               <Route
                 path="verification"
                 element={<Verification />}
+              />
+
+              <Route
+                path="review-queue"
+                element={<ReviewQueue />}
               />
 
               <Route

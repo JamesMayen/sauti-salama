@@ -374,6 +374,19 @@ export const createVerificationResultSchema =
       .allow(null, "")
       .default(null),
 
+    evidenceSufficiency: Joi.string()
+      .valid("sufficient", "conflicting", "insufficient")
+      .allow(null)
+      .default(null),
+
+    reviewRequired: Joi.boolean()
+      .default(false),
+
+    reviewReason: Joi.string()
+      .valid("insufficient_evidence", "manual_review", "technical_failure")
+      .allow(null)
+      .default(null),
+
     verifiedAt: Joi.date()
       .allow(null)
       .default(null),
