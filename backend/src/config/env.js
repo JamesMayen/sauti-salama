@@ -34,6 +34,7 @@ if (result.error) {
 const requiredEnvironmentVariables = [
   "MONGO_URI",
   "JWT_SECRET",
+  "OPENAI_API_KEY",
 ];
 
 export function validateEnvironment() {
@@ -55,6 +56,15 @@ export function validateEnvironment() {
   if (process.env.JWT_SECRET.length < 32) {
     throw new Error(
       "JWT_SECRET must be at least 32 characters long."
+    );
+  }
+
+  if (
+    !process.env.OPENAI_API_KEY.startsWith("sk-") &&
+    !process.env.OPENAI_API_KEY.startsWith("sk-proj-")
+  ) {
+    throw new Error(
+      "OPENAI_API_KEY must be a valid OpenAI API key."
     );
   }
 

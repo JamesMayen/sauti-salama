@@ -8,13 +8,19 @@ const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 function getOpenAiError(error) {
-  const status = error?.status;
+  const status = Number(error?.status ?? error?.statusCode ?? 0);
+  const providerCode = error?.error?.code || error?.code || null;
+  const providerMessage = error?.message || "AI provider request failed.";
 
-  if (status === 401) {
+  if (status === 401 || providerCode === "invalid_api_key") {
     return new AppError(
-      "AI verification is currently unavailable. Please try again later.",
+      "AI verification is currently unavailable because the configured OpenAI key is invalid or missing.",
       503,
-      "AI_PROVIDER_AUTHENTICATION_FAILED"
+      "AI_PROVIDER_AUTHENTICATION_FAILED",
+      {
+        providerCode,
+        providerMessage,
+      }
     );
   }
 
@@ -22,7 +28,11 @@ function getOpenAiError(error) {
     return new AppError(
       "AI verification is busy. Please try again later.",
       503,
-      "AI_PROVIDER_RATE_LIMITED"
+      "AI_PROVIDER_RATE_LIMITED",
+      {
+        providerCode,
+        providerMessage,
+      }
     );
   }
 
@@ -30,7 +40,11 @@ function getOpenAiError(error) {
     return new AppError(
       "AI verification could not process this request.",
       502,
-      "AI_PROVIDER_INVALID_REQUEST"
+      "AI_PROVIDER_INVALID_REQUEST",
+      {
+        providerCode,
+        providerMessage,
+      }
     );
   }
 
@@ -38,7 +52,11 @@ function getOpenAiError(error) {
     return new AppError(
       "AI verification is temporarily unavailable. Please try again later.",
       503,
-      "AI_PROVIDER_UNAVAILABLE"
+      "AI_PROVIDER_UNAVAILABLE",
+      {
+        providerCode,
+        providerMessage,
+      }
     );
   }
 
@@ -50,7 +68,11 @@ function getOpenAiError(error) {
     return new AppError(
       "AI verification timed out. Please try again later.",
       504,
-      "AI_PROVIDER_TIMEOUT"
+      "AI_PROVIDER_TIMEOUT",
+      {
+        providerCode,
+        providerMessage,
+      }
     );
   }
 
@@ -58,14 +80,22 @@ function getOpenAiError(error) {
     return new AppError(
       "AI verification is temporarily unavailable. Please try again later.",
       503,
-      "AI_PROVIDER_UNAVAILABLE"
+      "AI_PROVIDER_UNAVAILABLE",
+      {
+        providerCode,
+        providerMessage,
+      }
     );
   }
 
   return new AppError(
     "AI verification failed. Please try again later.",
     502,
-    "AI_PROVIDER_REQUEST_FAILED"
+    "AI_PROVIDER_REQUEST_FAILED",
+    {
+      providerCode,
+      providerMessage,
+    }
   );
 }
 
