@@ -18,6 +18,10 @@ const RELATIONSHIP_WEIGHTS = {
   inconclusive: 1,
 };
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function normalizeClaim(claim) {
   if (typeof claim !== "string") {
     return "";
@@ -53,7 +57,7 @@ function getRelationshipFromType(sourceType) {
   return "inconclusive";
 }
 
-function rankSourcesByClaim(sources, terms) {
+function rankSourcesByClaim(sources, terms, sourceUrl = null) {
   return sources
     .map((source) => {
       const haystack = [
@@ -86,14 +90,23 @@ function rankSourcesByClaim(sources, terms) {
       return {
         source,
         score,
+        exactSourceMatch:
+          Boolean(sourceUrl) && source.url === sourceUrl,
       };
     })
-    .filter((entry) => entry.score > 0)
+    .filter(
+      (entry) =>
+        entry.score > 0 || entry.exactSourceMatch
+    )
     .sort((a, b) => b.score - a.score);
 }
 
 export function determineEvidenceSufficiency(evidence = []) {
-  const items = Array.isArray(evidence) ? evidence : [];
+  const items = Array.isArray(evidence)
+    ? evidence.filter(
+        (item) => item && typeof item === "object"
+      )
+    : [];
 
   if (!items.length) {
     return "insufficient";
@@ -110,7 +123,8 @@ export function determineEvidenceSufficiency(evidence = []) {
   ).length;
 
   const reliableItems = items.filter(
-    (item) => ["high", "medium"].includes(item.reliabilityLevel)
+    (item) =>
+      ["high", "medium"].includes(item.reliabilityLevel)
   );
 
   if (conflictCount > 0 && supportCount > 0) {
@@ -139,16 +153,34 @@ export async function retrieveEvidenceForClaim({
   context = null,
 } = {}) {
   const normalizedClaim = normalizeClaim(claim);
-
-  if (!normalizedClaim) {
-    return [];
-  }
-
   const evidence = Array.isArray(suppliedEvidence)
     ? suppliedEvidence
     : [];
 
+  console.log("[Verification] Evidence retrieval started", {
+    provider: "mongodb-source-registry",
+    sourceUrlProvided: Boolean(sourceUrl),
+    suppliedEvidenceCount: evidence.length,
+  });
+
+  if (!normalizedClaim) {
+    console.log("[Verification] Evidence retrieval completed", {
+      matchedSourceCount: 0,
+      retrievedEvidenceCount: evidence.length,
+    });
+    return evidence;
+  }
+
   const terms = extractTerms(normalizedClaim);
+
+  if (!terms.length && !sourceUrl) {
+    console.log("[Verification] Evidence retrieval completed", {
+      matchedSourceCount: 0,
+      retrievedEvidenceCount: evidence.length,
+      reason: "no_search_terms_or_source_url",
+    });
+    return evidence;
+  }
 
   let sourceMatches = [];
 
@@ -160,19 +192,44 @@ export async function retrieveEvidenceForClaim({
     }
 
     if (terms.length) {
+      const escapedTerms = terms.map(escapeRegExp);
       query.$or = [
-        { name: { $regex: terms.join("|"), $options: "i" } },
-        { description: { $regex: terms.join("|"), $options: "i" } },
+        {
+          name: {
+            $regex: escapedTerms.join("|"),
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: escapedTerms.join("|"),
+            $options: "i",
+          },
+        },
       ];
     }
 
-    const candidateSources = await Source.find(query).sort({
-      reliabilityLevel: -1,
-      createdAt: -1,
-    }).limit(12);
+    const candidateSources = await Source.find(query)
+      .sort({
+        reliabilityLevel: -1,
+        createdAt: -1,
+      })
+      .limit(12);
 
-    sourceMatches = rankSourcesByClaim(candidateSources, terms);
+    sourceMatches = rankSourcesByClaim(
+      candidateSources,
+      terms,
+      sourceUrl
+    );
   } catch (error) {
+    console.error("[Verification] Evidence retrieval failed", {
+      code: error?.code || "EVIDENCE_RETRIEVAL_FAILED",
+      message:
+        error instanceof Error
+          ? "Source registry access failed."
+          : "Source registry access failed.",
+    });
+
     throw new AppError(
       "Evidence retrieval could not access the current source registry.",
       503,
@@ -182,35 +239,58 @@ export async function retrieveEvidenceForClaim({
 
   const retrieved = sourceMatches
     .slice(0, 5)
-    .map((entry, index) => ({
-      evidenceId: `E${index + 1}`,
-      sourceId: entry.source._id.toString(),
-      source: entry.source.name,
-      sourceType: entry.source.type,
-      reliabilityLevel: entry.source.reliabilityLevel || "unknown",
-      sourceTier: PRIORITY_BY_TYPE[entry.source.type] || 4,
-      title: entry.source.name,
-      url: entry.source.url || null,
-      date: entry.source.lastCheckedAt
-        ? new Date(entry.source.lastCheckedAt).toISOString()
-        : null,
-      relevance: `Relevant to the submitted claim based on matching source metadata and source hierarchy.`,
-      relationshipToClaim: getRelationshipFromType(entry.source.type),
-      content: context || null,
-      missingFields: [
-        !entry.source.name && "title",
-        !entry.source.url && "url",
-      ].filter(Boolean),
-    }));
+    .map((entry, index) => {
+      const source = entry?.source;
+
+      if (
+        !source?._id ||
+        !source.name ||
+        !source.type
+      ) {
+        return null;
+      }
+
+      return {
+        evidenceId: `E${index + 1}`,
+        sourceId: source._id.toString(),
+        source: source.name,
+        sourceType: source.type,
+        reliabilityLevel:
+          source.reliabilityLevel || "unknown",
+        sourceTier: PRIORITY_BY_TYPE[source.type] || 4,
+        title: source.name,
+        url: source.url || null,
+        date: null,
+        relevance:
+          "Matched the submitted claim against active source-registry metadata.",
+        relationshipToClaim: getRelationshipFromType(
+          source.type
+        ),
+        content: null,
+        missingFields: [
+          !source.url && "url",
+        ].filter(Boolean),
+      };
+    })
+    .filter(Boolean);
+
+  if (retrieved.length !== sourceMatches.slice(0, 5).length) {
+    throw new AppError(
+      "Evidence retrieval returned an invalid source record.",
+      503,
+      "EVIDENCE_RETRIEVAL_INVALID_RESPONSE"
+    );
+  }
 
   const deduped = new Map();
 
   for (const item of [...evidence, ...retrieved]) {
-    if (!item || !item.sourceId && !item.source) {
+    if (!item || (!item.sourceId && !item.source)) {
       continue;
     }
 
-    const dedupeKey = item.sourceId || item.url || item.title || item.source;
+    const dedupeKey =
+      item.sourceId || item.url || item.title || item.source;
 
     if (!dedupeKey || deduped.has(dedupeKey)) {
       continue;
@@ -224,5 +304,12 @@ export async function retrieveEvidenceForClaim({
     });
   }
 
-  return Array.from(deduped.values()).slice(0, 8);
+  const result = Array.from(deduped.values()).slice(0, 8);
+
+  console.log("[Verification] Evidence retrieval completed", {
+    matchedSourceCount: sourceMatches.length,
+    retrievedEvidenceCount: result.length,
+  });
+
+  return result;
 }

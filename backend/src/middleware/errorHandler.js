@@ -12,7 +12,7 @@ function handleDuplicateKeyError(error) {
       : "A resource with the same unique value already exists.",
     details: fields.map((field) => ({
       field,
-      value: error.keyValue[field],
+      message: "A duplicate value was rejected.",
     })),
   };
 }
@@ -25,7 +25,7 @@ function handleCastError(error) {
     details: [
       {
         field: error.path,
-        value: error.value,
+        message: "The identifier was invalid.",
       },
     ],
   };
@@ -39,27 +39,34 @@ function handleJsonSyntaxError() {
   };
 }
 
-function buildErrorResponse(error) {
-  /*
-  |--------------------------------------------------------------------------
-  | Custom application error
-  |--------------------------------------------------------------------------
-  */
+function sanitizeDetails(details) {
+  if (!Array.isArray(details)) {
+    return null;
+  }
 
+  return details
+    .filter((detail) => detail && typeof detail === "object")
+    .map((detail) => ({
+      field:
+        typeof detail.field === "string"
+          ? detail.field
+          : "unknown",
+      message:
+        typeof detail.message === "string"
+          ? detail.message
+          : "Invalid field value.",
+    }));
+}
+
+function buildErrorResponse(error) {
   if (error instanceof AppError) {
     return {
       statusCode: error.statusCode,
       code: error.code,
       message: error.message,
-      details: error.details,
+      details: sanitizeDetails(error.details),
     };
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Mongoose validation error
-  |--------------------------------------------------------------------------
-  */
 
   if (error instanceof mongoose.Error.ValidationError) {
     const details = Object.values(error.errors).map(
@@ -77,31 +84,13 @@ function buildErrorResponse(error) {
     };
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Invalid MongoDB ObjectId
-  |--------------------------------------------------------------------------
-  */
-
   if (error instanceof mongoose.Error.CastError) {
     return handleCastError(error);
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Duplicate MongoDB key
-  |--------------------------------------------------------------------------
-  */
-
   if (error?.code === 11000) {
     return handleDuplicateKeyError(error);
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Invalid JSON
-  |--------------------------------------------------------------------------
-  */
 
   if (
     error instanceof SyntaxError &&
@@ -109,12 +98,6 @@ function buildErrorResponse(error) {
   ) {
     return handleJsonSyntaxError();
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Unexpected error
-  |--------------------------------------------------------------------------
-  */
 
   return {
     statusCode: 500,
@@ -124,16 +107,30 @@ function buildErrorResponse(error) {
 }
 
 export function errorHandler(error, req, res, next) {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const response = buildErrorResponse(error);
+  const isUnexpectedError =
+    response.code === "SERVER_ERROR";
+
   console.error("API Error:", {
     method: req.method,
     path: req.originalUrl,
-    message: error.message,
-    stack: error.stack,
+    code: response.code,
+    statusCode: response.statusCode,
+    message: isUnexpectedError
+      ? "Unexpected server error."
+      : response.message,
   });
 
-  const response = buildErrorResponse(
-    error
-  );
+  if (
+    process.env.NODE_ENV !== "production" &&
+    error?.stack
+  ) {
+    console.error(error.stack);
+  }
 
   const payload = {
     success: false,
@@ -143,8 +140,9 @@ export function errorHandler(error, req, res, next) {
     },
   };
 
-  if (response.details) {
-    payload.error.details = response.details;
+  const details = sanitizeDetails(response.details);
+  if (details?.length) {
+    payload.error.details = details;
   }
 
   return res.status(response.statusCode).json(payload);

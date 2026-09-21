@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+import AppError from "../utils/AppError.js";
+
 import {
   processVerificationRequest,
   getVerificationRequests,
@@ -14,18 +16,34 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 export const createVerification = asyncHandler(
   async (req, res) => {
     const { claim } = req.body;
+    const evidenceCount = Array.isArray(req.body.evidence)
+      ? req.body.evidence.length
+      : 0;
+
+    console.log("[Verification] Request received", {
+      claimLength:
+        typeof claim === "string" ? claim.length : 0,
+      evidenceCount,
+    });
 
     if (!claim || !claim.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Claim is required.",
-      });
+      throw new AppError(
+        "Claim is required.",
+        400,
+        "VERIFICATION_CLAIM_REQUIRED"
+      );
     }
 
     const verification =
       await processVerificationRequest(req.body);
 
-    return res.status(201).json({
+    console.log("[Verification] Response sent", {
+      status: 200,
+      reviewRequired:
+        verification.result?.reviewRequired || false,
+    });
+
+    return res.status(200).json({
       success: true,
       message: "Verification completed successfully.",
       data: verification,

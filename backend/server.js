@@ -66,7 +66,7 @@ const CLIENT_URL =
 |--------------------------------------------------------------------------
 */
 
-connectDB();
+await connectDB();
 
 /*
 |--------------------------------------------------------------------------
@@ -106,6 +106,8 @@ app.use(
     ],
   })
 );
+
+app.use(morgan(":method :url :status :response-time ms"));
 
 /*
 |--------------------------------------------------------------------------
@@ -147,16 +149,6 @@ app.use(preventParameterPollution);
 
 /*
 |--------------------------------------------------------------------------
-| Request Logging
-|--------------------------------------------------------------------------
-*/
-
-if (process.env.NODE_ENV !== "production") {
-  app.use(morgan("dev"));
-}
-
-/*
-|--------------------------------------------------------------------------
 | Health Check
 |--------------------------------------------------------------------------
 */
@@ -184,6 +176,14 @@ app.get("/api", (req, res) => {
     version: "1.0.0",
     message:
       "Trusted information. Safer communities.",
+  });
+});
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Sauti Salama API is running",
+    status: "healthy",
   });
 });
 

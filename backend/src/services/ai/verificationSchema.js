@@ -232,6 +232,12 @@ function attachSourceIds(evidence, suppliedEvidence) {
         candidate.evidenceId === item.evidenceId
     );
 
+    if (!supplied?.sourceId) {
+      throw new Error(
+        "AI evidence could not be linked to a source."
+      );
+    }
+
     return {
       ...item,
       sourceId: supplied.sourceId,
@@ -266,15 +272,22 @@ export function normalizeAiVerificationResult(
     };
   }
 
-  return {
-    error: null,
-    value: {
-      ...value,
-      evidence: attachSourceIds(
-        value.evidence,
-        suppliedEvidence
-      ),
-      aiGenerated: true,
-    },
-  };
+  try {
+    return {
+      error: null,
+      value: {
+        ...value,
+        evidence: attachSourceIds(
+          value.evidence,
+          suppliedEvidence
+        ),
+        aiGenerated: true,
+      },
+    };
+  } catch (error) {
+    return {
+      error,
+      value: null,
+    };
+  }
 }

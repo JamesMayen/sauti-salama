@@ -14,7 +14,7 @@ export function createAiService({ provider = null } = {}) {
       if (!provider || typeof provider.verifyClaim !== "function") {
         throw new AppError(
           "AI verification is not configured yet.",
-          501,
+          503,
           "AI_VERIFICATION_NOT_CONFIGURED"
         );
       }
@@ -30,7 +30,7 @@ export function createAiService({ provider = null } = {}) {
       if (normalized.error) {
         throw new AppError(
           "AI provider returned an invalid verification result.",
-          502,
+          503,
           "INVALID_AI_VERIFICATION_RESULT",
           normalized.error.details
         );
