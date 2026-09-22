@@ -37,6 +37,12 @@ const requiredEnvironmentVariables = [
   "OPENAI_API_KEY",
 ];
 
+const optionalEnvironmentVariables = [
+  "SEARCH_API_KEY",
+  "SERPAPI_KEY",
+  "ONLINE_RETRIEVAL_ENABLED",
+];
+
 export function validateEnvironment() {
   const missingVariables =
     requiredEnvironmentVariables.filter(

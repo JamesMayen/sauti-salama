@@ -6,15 +6,22 @@ import {
   Info,
   CheckCircle2,
   Clock3,
+  XCircle,
 } from "lucide-react";
 import { Button, Card, Container, SectionHeading } from "../components/ui";
 import VerificationResult from "../components/verification/VerificationResult.jsx";
 import { createVerification } from "../services/verificationService.js";
 
-const demoClaim =
-  "A message says that all schools in Juba have been ordered to close tomorrow.";
+const demoClaim = "A message says that all schools in Juba have been ordered to close tomorrow.";
 
 function getVerificationErrorMessage(error) {
+  if (error.status === 503) {
+    if (error.code === "EVIDENCE_RETRIEVAL_FAILED" || error.code === "SEARCH_PROVIDER_ERROR" || error.code === "SEARCH_TIMEOUT") {
+      return "Verification is temporarily unavailable. Please try again later.";
+    }
+    return "Verification is temporarily unavailable. Please try again later.";
+  }
+
   if (error.status === 400) {
     return "Please check the claim and try again.";
   }
@@ -43,6 +50,7 @@ export default function Verify() {
   const [verification, setVerification] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [isTechnicalFailure, setIsTechnicalFailure] = useState(false);
 
   const handleCheck = async (event) => {
     event.preventDefault();
@@ -55,14 +63,22 @@ export default function Verify() {
     setIsSubmitting(true);
     setError("");
     setVerification(null);
+    setIsTechnicalFailure(false);
 
     try {
       const response = await createVerification({
         claim: claim.trim(),
       });
       setVerification(response);
+
+      if (response?.result?.evidenceSufficiency === "technical_failure" || response?.result?.technicalFailure) {
+        setIsTechnicalFailure(true);
+      }
     } catch (requestError) {
       setError(getVerificationErrorMessage(requestError));
+      if (requestError.status === 503) {
+        setIsTechnicalFailure(true);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -72,11 +88,11 @@ export default function Verify() {
     setClaim(demoClaim);
     setVerification(null);
     setError("");
+    setIsTechnicalFailure(false);
   };
 
   return (
     <main>
-      {/* Header */}
       <section className="bg-slate-50 py-16 sm:py-20">
         <Container>
           <SectionHeading
@@ -86,7 +102,6 @@ export default function Verify() {
           />
 
           <div className="mt-10 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-            {/* Verification form */}
             <Card className="p-6 sm:p-8">
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700">
@@ -104,10 +119,7 @@ export default function Verify() {
               </div>
 
               <form onSubmit={handleCheck} className="mt-8">
-                <label
-                  htmlFor="claim"
-                  className="mb-2 block text-sm font-semibold text-slate-700"
-                >
+                <label htmlFor="claim" className="mb-2 block text-sm font-semibold text-slate-700">
                   Information to verify
                 </label>
 
@@ -118,6 +130,7 @@ export default function Verify() {
                     setClaim(event.target.value);
                     setVerification(null);
                     setError("");
+                    setIsTechnicalFailure(false);
                   }}
                   rows={7}
                   maxLength={2000}
@@ -126,10 +139,7 @@ export default function Verify() {
                 />
 
                 <div className="mt-2 flex justify-between text-xs text-slate-500">
-                  <span>
-                    Do not include passwords or other sensitive information.
-                  </span>
-
+                  <span>Do not include passwords or other sensitive information.</span>
                   <span>{claim.length}/2000</span>
                 </div>
 
@@ -142,9 +152,7 @@ export default function Verify() {
                     aria-busy={isSubmitting}
                   >
                     <ShieldCheck size={18} />
-                    {isSubmitting
-                      ? "Assessing information..."
-                      : "Check Information"}
+                    {isSubmitting ? "Assessing information..." : "Check Information"}
                   </Button>
 
                   <button
@@ -157,17 +165,13 @@ export default function Verify() {
                 </div>
 
                 {error && (
-                  <p
-                    role="alert"
-                    className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-                  >
+                  <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                     {error}
                   </p>
                 )}
               </form>
             </Card>
 
-            {/* Trust principles */}
             <Card className="p-6 sm:p-8">
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
@@ -179,57 +183,38 @@ export default function Verify() {
                     How verification works
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Verification is designed to provide context, not amplify
-                    rumors.
+                    Verification is designed to provide context, not amplify rumors.
                   </p>
                 </div>
               </div>
 
               <div className="mt-8 space-y-5">
                 <div className="flex gap-3">
-                  <CheckCircle2
-                    className="mt-0.5 shrink-0 text-green-600"
-                    size={20}
-                  />
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-green-600" size={20} />
                   <div>
-                    <h3 className="font-semibold text-slate-800">
-                      Evidence first
-                    </h3>
+                    <h3 className="font-semibold text-slate-800">Evidence first</h3>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                      Relevant sources and available evidence are considered
-                      before a claim is classified.
+                      Relevant sources and available evidence are considered before a claim is classified.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-3">
-                  <Clock3
-                    className="mt-0.5 shrink-0 text-amber-600"
-                    size={20}
-                  />
+                  <Clock3 className="mt-0.5 shrink-0 text-amber-600" size={20} />
                   <div>
-                    <h3 className="font-semibold text-slate-800">
-                      Time matters
-                    </h3>
+                    <h3 className="font-semibold text-slate-800">Time matters</h3>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                      Information can change. Results should show when
-                      supporting evidence was checked.
+                      Information can change. Results should show when supporting evidence was checked.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-3">
-                  <AlertTriangle
-                    className="mt-0.5 shrink-0 text-orange-600"
-                    size={20}
-                  />
+                  <AlertTriangle className="mt-0.5 shrink-0 text-orange-600" size={20} />
                   <div>
-                    <h3 className="font-semibold text-slate-800">
-                      Uncertainty is visible
-                    </h3>
+                    <h3 className="font-semibold text-slate-800">Uncertainty is visible</h3>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                      An unverified claim is not automatically false. The
-                      platform clearly communicates uncertainty.
+                      An unverified claim is not automatically false. The platform clearly communicates uncertainty.
                     </p>
                   </div>
                 </div>
@@ -239,11 +224,34 @@ export default function Verify() {
         </Container>
       </section>
 
-      {verification?.data?.result && (
-        <VerificationResult
-          claim={claim}
-          result={verification.data.result}
-        />
+      {isTechnicalFailure && (
+        <section className="bg-slate-50 py-12">
+          <Container>
+            <Card className="overflow-hidden border-red-200">
+              <div className="border-b border-red-100 bg-red-50 p-6 sm:p-8">
+                <div className="flex items-start gap-3">
+                  <XCircle className="mt-0.5 shrink-0 text-red-600" size={24} aria-hidden="true" />
+                  <div>
+                    <h2 className="text-xl font-semibold text-red-900">Verification temporarily unavailable</h2>
+                    <p className="mt-2 text-sm leading-6 text-red-800">
+                      We could not retrieve evidence at this time. This does not mean the claim is true or false.
+                      Please try again later.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 sm:p-8">
+                <p className="text-sm text-slate-600">
+                  If this problem continues, contact the system administrator.
+                </p>
+              </div>
+            </Card>
+          </Container>
+        </section>
+      )}
+
+      {verification?.data?.result && !isTechnicalFailure && (
+        <VerificationResult claim={claim} result={verification.data.result} />
       )}
     </main>
   );

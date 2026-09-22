@@ -36,6 +36,13 @@ const sourceSchema = new mongoose.Schema(
       default: "unknown",
     },
 
+    publisher: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: null,
+    },
+
     description: {
       type: String,
       maxlength: 1000,

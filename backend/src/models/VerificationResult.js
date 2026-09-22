@@ -71,7 +71,51 @@ const evidenceSchema = new mongoose.Schema(
 
     relationshipToClaim: {
       type: String,
-      enum: ["supports", "contradicts", "contextualizes", "inconclusive", null],
+      enum: [
+        "direct_support",
+        "partial_support",
+        "contextual",
+        "contradicts",
+        "irrelevant",
+        "inconclusive",
+        null,
+      ],
+      default: null,
+    },
+
+    publisher: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: null,
+    },
+
+    retrievedAt: {
+      type: Date,
+      default: null,
+    },
+
+    snippet: {
+      type: String,
+      maxlength: 4000,
+      default: null,
+    },
+
+    supportsClaim: {
+      type: Boolean,
+      default: null,
+    },
+
+    evidenceScore: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: null,
+    },
+
+    content: {
+      type: String,
+      maxlength: 4000,
       default: null,
     },
   },
@@ -139,12 +183,24 @@ const humanReviewSchema = new mongoose.Schema(
     },
     decision: {
       type: String,
-      enum: ["verified", "partially_verified", "unverified", "contested", "false", null],
+      enum: [
+        "verified",
+        "partially_verified",
+        "unverified",
+        "contested",
+        "false",
+        null,
+      ],
       default: null,
     },
     reason: {
       type: String,
-      enum: ["insufficient_evidence", "manual_review", "technical_failure", null],
+      enum: [
+        "insufficient_evidence",
+        "manual_review",
+        "technical_failure",
+        null,
+      ],
       default: null,
     },
     notes: {
@@ -172,6 +228,37 @@ const verificationResultSchema = new mongoose.Schema(
       ref: "VerificationRequest",
       required: true,
       unique: true,
+    },
+
+    claimType: {
+      type: String,
+      enum: [
+        "geography",
+        "government",
+        "history",
+        "law_policy",
+        "public_figure",
+        "current_event",
+        "security_incident",
+        "health",
+        "statistics",
+        "general_factual",
+        "opinion",
+        "ambiguous",
+        null,
+      ],
+      default: null,
+    },
+
+    retrievalMethod: {
+      type: String,
+      enum: ["online_search", "source_registry", "mixed", null],
+      default: null,
+    },
+
+    technicalFailure: {
+      type: Boolean,
+      default: false,
     },
 
     truthStatus: {
@@ -230,7 +317,7 @@ const verificationResultSchema = new mongoose.Schema(
 
     evidenceSufficiency: {
       type: String,
-      enum: ["sufficient", "conflicting", "insufficient"],
+      enum: ["sufficient", "conflicting", "insufficient", "technical_failure"],
       default: "sufficient",
     },
 
@@ -241,7 +328,12 @@ const verificationResultSchema = new mongoose.Schema(
 
     reviewReason: {
       type: String,
-      enum: ["insufficient_evidence", "manual_review", "technical_failure", null],
+      enum: [
+        "insufficient_evidence",
+        "manual_review",
+        "technical_failure",
+        null,
+      ],
       default: null,
     },
 
@@ -278,6 +370,7 @@ const verificationResultSchema = new mongoose.Schema(
 
 verificationResultSchema.index({ truthStatus: 1 });
 verificationResultSchema.index({ riskLevel: 1 });
+verificationResultSchema.index({ claimType: 1 });
 verificationResultSchema.index({ createdAt: -1 });
 
 const VerificationResult = mongoose.model(

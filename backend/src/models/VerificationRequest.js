@@ -10,6 +10,26 @@ const verificationRequestSchema = new mongoose.Schema(
       maxlength: 2000,
     },
 
+    claimType: {
+      type: String,
+      enum: [
+        "geography",
+        "government",
+        "history",
+        "law_policy",
+        "public_figure",
+        "current_event",
+        "security_incident",
+        "health",
+        "statistics",
+        "general_factual",
+        "opinion",
+        "ambiguous",
+        null,
+      ],
+      default: null,
+    },
+
     language: {
       type: String,
       enum: ["english", "juba_arabic", "dinka", "nuer", "other"],
@@ -54,7 +74,7 @@ const verificationRequestSchema = new mongoose.Schema(
 
     evidenceSufficiency: {
       type: String,
-      enum: ["sufficient", "conflicting", "insufficient", null],
+      enum: ["sufficient", "conflicting", "insufficient", "technical_failure", null],
       default: null,
     },
 

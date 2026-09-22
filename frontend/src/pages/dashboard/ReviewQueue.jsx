@@ -164,12 +164,42 @@ export default function ReviewQueue() {
                   <p className="text-xs uppercase tracking-wide text-slate-400">Priority</p>
                   <p className="mt-2 text-sm text-slate-200">{statusLabel(selectedItem.priority)}</p>
                 </div>
+                {selectedItem.claimType && (
+                  <div className="rounded-xl border border-slate-700 bg-slate-950 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Claim type</p>
+                    <p className="mt-2 text-sm text-slate-200">{statusLabel(selectedItem.claimType)}</p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 rounded-xl border border-slate-700 bg-slate-950 p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-400">Evidence status</p>
-                <p className="mt-2 text-sm text-slate-200">The AI could not find enough reliable evidence to establish or contradict this claim. This item remains unverified until a human reviewer decides otherwise.</p>
+                <p className="mt-2 text-sm text-slate-200">
+                  {selectedItem.result?.evidence?.length > 0
+                    ? `Evidence was retrieved (${selectedItem.result.evidence.length} source${selectedItem.result.evidence.length !== 1 ? "s" : ""}). The system could not find enough reliable evidence to establish or contradict this claim.`
+                    : "The AI could not find enough reliable evidence to establish or contradict this claim. This item remains unverified until a human reviewer decides otherwise."}
+                </p>
               </div>
+
+              {selectedItem.result?.evidence?.length > 0 && (
+                <div className="mt-6 space-y-3">
+                  <p className="text-sm font-semibold text-slate-200">Retrieved evidence</p>
+                  {selectedItem.result.evidence.map((item, index) => (
+                    <div key={item.evidenceId || index} className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-white">{item.title || item.source || "Source"}</p>
+                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">Tier {item.sourceTier || "?"}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{item.sourceType || "Source type unavailable"}{item.date ? ` | ${item.date}` : ""}{item.publisher ? ` | ${item.publisher}` : ""}</p>
+                      {item.relationshipToClaim && <p className="mt-1 text-xs text-slate-400">Relationship: {item.relationshipToClaim.replace(/_/g, " ")}</p>}
+                      {item.relevance && <p className="mt-2 text-xs text-slate-300">{item.relevance}</p>}
+                      {item.url && /^https?:\/\//i.test(item.url) && (
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs font-semibold text-emerald-300 underline">Open source</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-6 space-y-4">
                 <label className="block text-sm font-semibold text-slate-200">
