@@ -156,7 +156,26 @@ function EvidenceCard({ item, index }) {
   );
 }
 
-function EvidenceSection({ evidence }) {
+function EvidenceSection({ evidence, noEvidenceFound }) {
+  if (noEvidenceFound) {
+    return (
+      <section aria-labelledby="evidence-heading" className="border-t border-slate-200 p-6 sm:p-8">
+        <div className="flex items-start gap-3">
+          <FileSearch className="mt-0.5 shrink-0 text-amber-500" size={20} aria-hidden="true" />
+          <div>
+            <h3 id="evidence-heading" className="font-semibold text-slate-900">Evidence search</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Insufficient credible evidence found. This claim has been sent for human review.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Online research was conducted but no authoritative sources could be found to verify or contradict this claim.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   if (!evidence?.length) {
     return (
       <section aria-labelledby="evidence-heading" className="border-t border-slate-200 p-6 sm:p-8">
@@ -196,11 +215,13 @@ export default function VerificationResult({ claim, result }) {
   const truthStatus = result?.truthStatus;
   const riskLevel = result?.riskLevel;
   const evidenceSufficiency = result?.evidenceSufficiency;
+  const reviewReason = result?.reviewReason;
   const uncertainties = Array.isArray(result?.uncertainties) ? result.uncertainties : [];
   const actions = result?.recommendedAction ? [result.recommendedAction] : [];
   const technicalFailure = result?.technicalFailure || false;
   const claimType = result?.claimType || null;
   const retrievalMethod = result?.retrievalMethod || null;
+  const noEvidenceFound = reviewReason === "no_evidence_found";
 
   if (technicalFailure) {
     return (
@@ -320,7 +341,7 @@ export default function VerificationResult({ claim, result }) {
             </section>
           </div>
 
-          <EvidenceSection evidence={result?.evidence} />
+          <EvidenceSection evidence={result?.evidence} noEvidenceFound={noEvidenceFound} />
 
           <div className="grid gap-6 border-t border-slate-200 p-6 sm:p-8 md:grid-cols-2">
             <section aria-labelledby="uncertainties-heading">
@@ -352,7 +373,14 @@ export default function VerificationResult({ claim, result }) {
             </section>
           </div>
 
-          {truthStatus === "unverified" && !technicalFailure && (
+          {noEvidenceFound && (
+            <div className="border-t border-amber-200 bg-amber-50 px-6 py-4 text-sm leading-6 text-amber-900 sm:px-8">
+              <p className="font-semibold">Insufficient credible evidence found. This claim has been sent for human review.</p>
+              <p className="mt-1">Online research did not find authoritative sources to verify or contradict this claim. This does not mean the claim is false.</p>
+            </div>
+          )}
+
+          {truthStatus === "unverified" && !noEvidenceFound && !technicalFailure && (
             <div className="border-t border-amber-200 bg-amber-50 px-6 py-4 text-sm leading-6 text-amber-900 sm:px-8">
               The available information was not sufficient to establish this claim. Unverified does not mean false.
             </div>

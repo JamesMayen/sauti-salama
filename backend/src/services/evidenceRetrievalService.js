@@ -136,6 +136,10 @@ async function retrieveSourceRegistryEvidence(claim, suppliedEvidence) {
 
   if (!normalized) return [];
 
+  if (evidence.length > 0) {
+    console.log("[Verification] Source registry: supplied evidence present", { count: evidence.length });
+  }
+
   const terms = normalized
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
@@ -228,7 +232,7 @@ export async function retrieveAndAssessEvidence({
   let onlineEvidence = [];
   let onlineError = null;
   let onlineSuccess = false;
-  let retrievalMethod = "source_registry";
+  let retrievalMethod = "online_search";
 
   try {
     console.log("[Verification] Attempting online evidence retrieval");
@@ -251,57 +255,56 @@ export async function retrieveAndAssessEvidence({
   }
 
   let allEvidence = [];
+  const allSeenUrls = new Set();
 
   if (onlineSuccess) {
     allEvidence = onlineEvidence;
     retrievalMethod = "online_search";
 
+    for (const item of allEvidence) {
+      if (item.url) allSeenUrls.add(item.url);
+    }
+
     try {
-      console.log("[Verification] Also searching source registry for corroboration");
+      console.log("[Verification] Also searching source registry for supplementary evidence");
       const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
-      const seenUrls = new Set(allEvidence.map((e) => e.url).filter(Boolean));
       for (const item of registryEvidence) {
-        if (item.url && seenUrls.has(item.url)) continue;
-        if (item.url) seenUrls.add(item.url);
+        if (item.url && allSeenUrls.has(item.url)) continue;
+        if (item.url) allSeenUrls.add(item.url);
         allEvidence.push(item);
       }
       retrievalMethod = "mixed";
       console.log("[Verification] Mixed retrieval complete", { totalEvidence: allEvidence.length });
-    } catch {
-      console.log("[Verification] Source registry failed, using online evidence only");
+    } catch (error) {
+      console.error("[Verification] Source registry failed, using online evidence only", { error: error.message, code: error.code });
+    }
+  } else if (onlineError && onlineError.statusCode >= 500) {
+    console.log("[Verification] Online retrieval failed with technical error");
+    if (onlineError instanceof AppError && onlineError.statusCode >= 500) {
+      throw onlineError;
     }
   } else {
-    if (onlineError && onlineError.statusCode >= 500) {
-      console.log("[Verification] Online retrieval failed with technical error, attempting registry fallback");
-      try {
-        const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
-        allEvidence = registryEvidence;
-        retrievalMethod = "source_registry";
-        console.log("[Verification] Registry fallback complete", { evidenceCount: allEvidence.length });
-      } catch (error) {
-        if (error instanceof AppError && error.statusCode >= 500) {
-          throw error;
-        }
-        console.log("[Verification] Registry fallback also failed", { error: error.message });
-      }
-    } else {
-      console.log("[Verification] No online evidence, searching source registry");
-      try {
-        const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
-        allEvidence = registryEvidence;
-        retrievalMethod = "source_registry";
-        console.log("[Verification] Source registry complete", { evidenceCount: allEvidence.length });
-      } catch (error) {
-        if (error instanceof AppError && error.statusCode >= 500) {
-          throw error;
-        }
-      }
-    }
+    console.log("[Verification] No online evidence, source registry as supplementary context only");
   }
 
   if (onlineError && onlineError.statusCode >= 500 && !allEvidence.length) {
     console.log("[Verification] Technical failure - no evidence available", { code: onlineError.code });
     throw onlineError;
+  }
+
+  for (const item of suppliedEvidence) {
+    if (item.url) {
+      if (allSeenUrls.has(item.url)) continue;
+      allSeenUrls.add(item.url);
+    }
+    allEvidence.push(item);
+  }
+
+  if (suppliedEvidence.length) {
+    console.log("[Verification] Supplied evidence added", {
+      suppliedCount: suppliedEvidence.length,
+      totalEvidence: allEvidence.length,
+    });
   }
 
   for (const item of allEvidence) {

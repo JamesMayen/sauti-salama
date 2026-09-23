@@ -72,28 +72,28 @@ async function markRequestFailed(requestId, error) {
   }
 }
 
-function buildInsufficientEvidenceResult(evidence, claimType) {
+function buildNoEvidenceReviewResult(claimType) {
   return {
     truthStatus: "unverified",
     riskLevel: "medium",
-    confidence: 0.35,
+    confidence: null,
     summary:
-      "We could not find enough reliable evidence to independently verify this claim at this time.",
+      "Insufficient credible evidence found. This claim has been sent for human review.",
     reasoning:
-      "The review process did not find sufficient reliable evidence to establish or contradict the claim. This is not evidence of falsehood; it requires human review.",
+      "The system searched for current evidence but could not find enough credible information to independently verify or contradict this claim. This is not evidence of falsehood; it requires human review.",
     uncertainties: [
-      "No sufficiently reliable evidence was identified to verify or refute the claim.",
+      "No sufficiently reliable evidence was identified through online research to verify or refute the claim.",
     ],
     recommendedAction:
       "Avoid forwarding this claim as established fact until a reviewer assesses the available evidence.",
-    evidence: Array.isArray(evidence) ? evidence : [],
+    evidence: [],
     evidenceSufficiency: "insufficient",
     reviewRequired: true,
-    reviewReason: "insufficient_evidence",
-    aiGenerated: false,
+    reviewReason: "no_evidence_found",
+    aiGenerated: true,
     humanReview: {
       status: "pending",
-      reason: "insufficient_evidence",
+      reason: "no_evidence_found",
     },
     claimType: claimType || null,
   };
@@ -355,23 +355,13 @@ export async function processVerificationRequest(data, { instructions = buildVer
       throw onlineError;
     }
 
-    if (evidenceSufficiency === "insufficient") {
-      console.log("[Verification] AI assessment skipped", { reason: sufficiencyReason });
-
-      const result = await createVerificationResult(
-        verificationRequest._id,
-        buildInsufficientEvidenceResult(evidence, claimType)
-      );
-
-      console.log("[Verification] Result persisted", { status: "needs_review", reviewRequired: true });
-
-      return {
-        request: await getVerificationRequestById(verificationRequest._id),
-        result,
-      };
-    }
-
     console.log("[Verification] AI assessment started");
+
+    console.log("[Verification] AI input evidence", {
+      evidenceCount: evidence.length,
+      sufficiency: evidenceSufficiency,
+      sufficiencyReason,
+    });
 
     const aiResultBase = await verifyClaimWithAi({
       claim: data.claim,
@@ -382,14 +372,27 @@ export async function processVerificationRequest(data, { instructions = buildVer
       instructions,
     });
 
-    console.log("[Verification] AI assessment completed");
+    console.log("[Verification] AI assessment completed", { truthStatus: aiResultBase.truthStatus });
+
+    const isAiUnverifiedNoEvidence =
+      aiResultBase.truthStatus === "unverified" &&
+      (!Array.isArray(aiResultBase.evidence) || aiResultBase.evidence.length === 0) &&
+      evidenceSufficiency === "insufficient";
+
+    const reviewRequired = isAiUnverifiedNoEvidence
+      ? true
+      : (aiResultBase.reviewRequired === true || aiResultBase.truthStatus === "unverified");
+
+    const reviewReason = isAiUnverifiedNoEvidence
+      ? "no_evidence_found"
+      : (reviewRequired && aiResultBase.reviewReason ? aiResultBase.reviewReason : null);
 
     const normalizedAiResult = {
       ...aiResultBase,
       evidence: Array.isArray(aiResultBase.evidence) ? aiResultBase.evidence : [],
-      evidenceSufficiency,
-      reviewRequired: false,
-      reviewReason: null,
+      evidenceSufficiency: evidenceSufficiency || aiResultBase.evidenceSufficiency || "insufficient",
+      reviewRequired,
+      reviewReason,
       aiGenerated: true,
       claimType,
       retrievalMethod,
@@ -401,7 +404,11 @@ export async function processVerificationRequest(data, { instructions = buildVer
       normalizedAiResult
     );
 
-    console.log("[Verification] Result persisted", { status: "completed", reviewRequired: false });
+    console.log("[Verification] Result persisted", {
+      status: reviewRequired ? "needs_review" : "completed",
+      reviewRequired,
+      reviewReason,
+    });
 
     return {
       request: await getVerificationRequestById(verificationRequest._id),

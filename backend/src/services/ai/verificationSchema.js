@@ -136,12 +136,19 @@ export function isEvidenceTraceable(evidence, suppliedEvidence = []) {
   const availableEvidence = Array.isArray(suppliedEvidence) ? suppliedEvidence : [];
   if (!Array.isArray(evidence)) return false;
 
+  if (evidence.length === 0) return true;
+
+  if (!availableEvidence.length) return false;
+
   return evidence.every((item) => {
     const identityFields = ["evidenceId", "source", "sourceType", "reliabilityLevel", "sourceTier", "title", "url", "date"];
     if (!item.evidenceId) return false;
     return availableEvidence.some((supplied) => {
       const populatedFields = identityFields.filter((field) => item[field] !== null && item[field] !== undefined);
-      return supplied && supplied.evidenceId === item.evidenceId && populatedFields.every((field) => supplied[field] === item[field]);
+      return supplied && supplied.evidenceId === item.evidenceId && populatedFields.every((field) => {
+        if (item[field] === null || item[field] === undefined) return true;
+        return supplied[field] === item[field];
+      });
     });
   });
 }
