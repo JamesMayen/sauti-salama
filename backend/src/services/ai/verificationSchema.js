@@ -149,8 +149,8 @@ export function isEvidenceTraceable(evidence, suppliedEvidence = []) {
 function attachSourceIds(evidence, suppliedEvidence) {
   return evidence.map((item) => {
     const supplied = suppliedEvidence.find((candidate) => candidate.evidenceId === item.evidenceId);
-    if (!supplied?.sourceId) throw new Error("AI evidence could not be linked to a source.");
-    return { ...item, sourceId: supplied.sourceId };
+    if (!supplied) throw new Error("AI evidence could not be linked to a source.");
+    return { ...item, ...(supplied.sourceId ? { sourceId: supplied.sourceId } : {}) };
   });
 }
 

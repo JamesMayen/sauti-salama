@@ -313,6 +313,8 @@ export async function processVerificationRequest(data, { instructions = buildVer
 
     console.log("[Verification] Claim normalized", { claimLength: data.claim.length });
 
+    console.log("[Verification] Claim:", data.claim.slice(0, 120));
+
     await VerificationRequest.findByIdAndUpdate(verificationRequest._id, { status: "processing" });
 
     const suppliedEvidence = await prepareEvidence(data.evidence || []);

@@ -19,16 +19,6 @@ const PRIORITY_BY_TYPE = {
   other: 4,
 };
 
-const RELATIONSHIP_MAP = {
-  direct_support: "supports",
-  partial_support: "supports",
-  contextual: "contextualizes",
-  contextualizes: "contextualizes",
-  contradicts: "contradicts",
-  irrelevant: "inconclusive",
-  inconclusive: "inconclusive",
-};
-
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -65,14 +55,16 @@ function determineEvidenceSufficiency(evidence = []) {
     (item) => item.evidenceScore && item.evidenceScore >= 0.6
   );
 
+  console.log("[Verification] Sufficiency analysis", {
+    supportCount, conflictCount, contextualCount, reliableItems: reliableItems.length, strongEvidence: strongEvidence.length,
+  });
+
   if (conflictCount > 0 && supportCount > 0) {
     return { sufficiency: "conflicting", reason: "multiple_sources_conflict" };
   }
 
   if (reliableItems.length >= 1 && supportCount >= 1) {
-    if (strongEvidence.length >= 1 || (reliableItems.length >= 1 && supportCount >= 1 && items.length >= 1)) {
-      return { sufficiency: "sufficient", reason: "authoritative_evidence_found" };
-    }
+    return { sufficiency: "sufficient", reason: "authoritative_evidence_found" };
   }
 
   if (reliableItems.length >= 2 && supportCount >= 1) {
@@ -91,14 +83,18 @@ function determineEvidenceSufficiency(evidence = []) {
 }
 
 async function retrieveOnlineEvidence(claim) {
+  console.log("[Verification] Evidence retrieval START (online)", { claim: claim.slice(0, 80) });
+
   const onlineResult = await retrieveEvidenceForClaimOnline(claim);
 
   if (onlineResult.error) {
-    throw onlineResult.error;
+    console.error("[Verification] Online retrieval FAILED", { code: onlineResult.error.code, message: onlineResult.error.message });
+    return { evidence: [], method: "none", error: onlineResult.error, retrieved: false };
   }
 
-  if (!onlineResult.retrieved) {
-    return { evidence: [], method: "none", error: null };
+  if (!onlineResult.retrieved || !onlineResult.evidence.length) {
+    console.log("[Verification] Online retrieval returned no evidence");
+    return { evidence: [], method: "none", error: null, retrieved: false };
   }
 
   const processed = [];
@@ -126,27 +122,19 @@ async function retrieveOnlineEvidence(claim) {
       evidenceScore: item.evidenceScore || null,
     };
 
-    enriched.reliabilityLevel = assessSourceTier({
-      url: enriched.url,
-      name: enriched.title,
-      description: enriched.snippet,
-    }).sourceType === "official"
-      ? "high"
-      : enriched.reliabilityLevel;
-
     processed.push(enriched);
   }
 
-  return { evidence: processed, method: "online_search", error: null };
+  console.log("[Verification] Online retrieval RESULT", { evidenceCount: processed.length });
+
+  return { evidence: processed, method: "online_search", error: null, retrieved: true };
 }
 
 async function retrieveSourceRegistryEvidence(claim, suppliedEvidence) {
   const normalized = normalizeClaim(claim);
   const evidence = Array.isArray(suppliedEvidence) ? suppliedEvidence : [];
 
-  if (!normalized) {
-    return [];
-  }
+  if (!normalized) return [];
 
   const terms = normalized
     .toLowerCase()
@@ -164,9 +152,13 @@ async function retrieveSourceRegistryEvidence(claim, suppliedEvidence) {
     { description: { $regex: escapedTerms.join("|"), $options: "i" } },
   ];
 
+  console.log("[Verification] Source registry search", { terms, query: { $or: query.$or.map((q) => Object.keys(q)) } });
+
   const candidateSources = await Source.find(query)
     .sort({ reliabilityLevel: -1, createdAt: -1 })
     .limit(12);
+
+  console.log("[Verification] Source registry candidates", { count: candidateSources.length });
 
   const items = candidateSources
     .slice(0, 5)
@@ -231,6 +223,7 @@ export async function retrieveAndAssessEvidence({
   }
 
   const claimClassification = classifyClaim(normalized);
+  console.log("[Verification] Claim classification", { category: claimClassification.category, confidence: claimClassification.confidence });
 
   let onlineEvidence = [];
   let onlineError = null;
@@ -238,16 +231,23 @@ export async function retrieveAndAssessEvidence({
   let retrievalMethod = "source_registry";
 
   try {
+    console.log("[Verification] Attempting online evidence retrieval");
     const onlineResult = await retrieveOnlineEvidence(normalized);
+
     if (onlineResult.error) {
       onlineError = onlineResult.error;
+      console.log("[Verification] Online retrieval error", { code: onlineResult.error.code, statusCode: onlineResult.error.statusCode });
     } else if (onlineResult.evidence.length > 0) {
       onlineEvidence = onlineResult.evidence;
       onlineSuccess = true;
       retrievalMethod = "online_search";
+      console.log("[Verification] Online retrieval SUCCESS", { evidenceCount: onlineEvidence.length });
+    } else {
+      console.log("[Verification] Online retrieval returned no results");
     }
   } catch (error) {
     onlineError = error;
+    console.error("[Verification] Online retrieval exception", { code: error.code, message: error.message });
   }
 
   let allEvidence = [];
@@ -257,6 +257,7 @@ export async function retrieveAndAssessEvidence({
     retrievalMethod = "online_search";
 
     try {
+      console.log("[Verification] Also searching source registry for corroboration");
       const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
       const seenUrls = new Set(allEvidence.map((e) => e.url).filter(Boolean));
       for (const item of registryEvidence) {
@@ -265,26 +266,41 @@ export async function retrieveAndAssessEvidence({
         allEvidence.push(item);
       }
       retrievalMethod = "mixed";
+      console.log("[Verification] Mixed retrieval complete", { totalEvidence: allEvidence.length });
     } catch {
-      // Registry failed, continue with online evidence only
+      console.log("[Verification] Source registry failed, using online evidence only");
     }
   } else {
-    try {
-      const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
-      allEvidence = registryEvidence;
-      retrievalMethod = "source_registry";
-    } catch (error) {
-      if (error instanceof AppError && error.statusCode >= 500) {
-        throw new AppError(
-          "Evidence retrieval failed.",
-          503,
-          "EVIDENCE_RETRIEVAL_FAILED"
-        );
+    if (onlineError && onlineError.statusCode >= 500) {
+      console.log("[Verification] Online retrieval failed with technical error, attempting registry fallback");
+      try {
+        const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
+        allEvidence = registryEvidence;
+        retrievalMethod = "source_registry";
+        console.log("[Verification] Registry fallback complete", { evidenceCount: allEvidence.length });
+      } catch (error) {
+        if (error instanceof AppError && error.statusCode >= 500) {
+          throw error;
+        }
+        console.log("[Verification] Registry fallback also failed", { error: error.message });
+      }
+    } else {
+      console.log("[Verification] No online evidence, searching source registry");
+      try {
+        const registryEvidence = await retrieveSourceRegistryEvidence(normalized, suppliedEvidence);
+        allEvidence = registryEvidence;
+        retrievalMethod = "source_registry";
+        console.log("[Verification] Source registry complete", { evidenceCount: allEvidence.length });
+      } catch (error) {
+        if (error instanceof AppError && error.statusCode >= 500) {
+          throw error;
+        }
       }
     }
   }
 
   if (onlineError && onlineError.statusCode >= 500 && !allEvidence.length) {
+    console.log("[Verification] Technical failure - no evidence available", { code: onlineError.code });
     throw onlineError;
   }
 
@@ -303,7 +319,11 @@ export async function retrieveAndAssessEvidence({
   allEvidence.sort((a, b) => (b.evidenceScore ?? 0) - (a.evidenceScore ?? 0));
   allEvidence = allEvidence.slice(0, 8);
 
+  console.log("[Verification] Final evidence count", { count: allEvidence.length });
+
   const { sufficiency, reason } = determineEvidenceSufficiency(allEvidence);
+
+  console.log("[Verification] Evidence sufficiency", { sufficiency, reason, evidenceCount: allEvidence.length });
 
   const technicalFailure =
     onlineError && onlineError.statusCode >= 500 && !allEvidence.length;

@@ -12,7 +12,8 @@ const evidenceSchema = new mongoose.Schema(
     sourceId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Source",
-      required: true,
+      required: false,
+      default: null,
     },
 
     source: {

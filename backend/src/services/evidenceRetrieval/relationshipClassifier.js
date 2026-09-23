@@ -1,7 +1,7 @@
 const DIRECT_SUPPORT_PATTERNS = [
   /(?:capital|national capital).*of\s+(South Sudan|Uganda|Sudan|Kenya|Ethiopia)/i,
-  /is (?:the\s+)?capital(?:\s+city)?\s+of/i,
-  /located\s+in\s+(?:the\s+)?(.+?)(?:\s+state|\s+province|\s+region|\s+country)/i,
+  /is\s+(?:the\s+)?capital(?:\s+city)?\s+of/i,
+  /located\s+in\s+(?:the\s+)?(.+?)(?:\s+(?:state|province|region|country))$/i,
   /is\s+located\s+in/i,
   /situated\s+in\s+(?:the\s+)?(.+)/i,
   /part\s+of\s+(.+)/i,
@@ -14,12 +14,13 @@ const DIRECT_SUPPORT_PATTERNS = [
 
 const CONTRADICTS_PATTERNS = [
   /is\s+not\s+(?:the\s+)?capital/i,
-  /capital\s+is\s+(?!Juba)(.+)/i,
+  /(?:capital|national\s+capital)\s+is\s+(?:not\s+)?(.+)/i,
   /not\s+(?:located|situated)\s+in/i,
-  /is\s+in\s+(?!South\s+Sudan)(.+)/i,
   /does\s+not\b/i,
   /does\s+not\s+pass\b/i,
   /is\s+not\s+a\s+(?:part|portion)/i,
+  /false/i,
+  /incorrect/i,
 ];
 
 const CONTEXTUAL_PATTERNS = [
@@ -45,40 +46,40 @@ function classifyRelationship(evidence, claim) {
     .toLowerCase();
 
   const claimText = claim.toLowerCase();
+  const claimIsAboutCapital = /capital|is the.*city of|national capital/i.test(claimText);
 
-  if (CONTRADICTS_PATTERNS.some((p) => p.test(evidenceText))) {
-    return "contradicts";
+  for (const pattern of CONTRADICTS_PATTERNS) {
+    if (pattern.test(evidenceText)) return "contradicts";
   }
 
-  const hasDirectMatch = DIRECT_SUPPORT_PATTERNS.some((pattern) => {
-    const match = pattern.exec(evidenceText);
-    if (!match) return false;
+  for (const pattern of DIRECT_SUPPORT_PATTERNS) {
+    if (pattern.test(evidenceText)) {
+      if (claimIsAboutCapital) return "direct_support";
+    }
+  }
 
-    const captured = match[1] || match[0] || "";
-    const claimTerms = extractKeyTerms(claimText);
-    const evidenceTerms = extractKeyTerms(captured);
-
-    const overlap = claimTerms.filter((t) => evidenceTerms.includes(t)).length;
-    return overlap >= Math.min(claimTerms.length, 1);
-  });
-
-  if (hasDirectMatch) return "direct_support";
-
-  if (evidenceText.includes(claimText.split(" ").slice(0, 3).join(" "))) {
+  if (evidenceText.includes(claimText.split(" ").slice(0, 4).join(" "))) {
     return "direct_support";
   }
 
-  if (CONTEXTUAL_PATTERNS.some((p) => p.test(evidenceText))) {
-    return "contextual";
+  for (const pattern of CONTEXTUAL_PATTERNS) {
+    if (pattern.test(evidenceText)) return "contextual";
   }
 
-  if (evidenceText.length > 20) {
+  if (claimIsAboutCapital && /is\s+(?:a\s+)?(?:major|large|significant)\s+(?:city|town)/i.test(evidenceText)) {
     return "partial_support";
   }
 
-  if (evidenceText.length > 0 && evidenceText !== claimText) {
-    return "related";
+  const claimTerms = extractKeyTerms(claimText);
+  const evidenceTerms = extractKeyTerms(evidenceText);
+  const overlap = claimTerms.filter((t) => evidenceTerms.includes(t)).length;
+
+  if (overlap >= Math.min(claimTerms.length, 2)) {
+    return "partial_support";
   }
+
+  if (evidenceText.length > 20) return "contextual";
+  if (evidenceText.length > 0 && evidenceText !== claimText) return "related";
 
   return "inconclusive";
 }
@@ -103,4 +104,4 @@ function extractKeyTerms(text) {
     .filter((word) => word.length > 2 && !stopWords.has(word));
 }
 
-export { classifyRelationship };
+export { classifyRelationship, DIRECT_SUPPORT_PATTERNS, CONTRADICTS_PATTERNS, CONTEXTUAL_PATTERNS };

@@ -12,15 +12,11 @@ The system now uses a **multi-layered evidence retrieval pipeline**:
 
 ## 2. What external provider/API is required
 
-- **Primary**: SerpAPI (Google Search API) or any search API that returns JSON results with `title`, `link`/`url`, and `snippet` fields.
-- **Fallback**: Direct web page scraping using Node.js `fetch` (built into Node 18+).
-- **Required env vars**:
-  - `OPENAI_API_KEY` — Already required; used for AI assessment
-  - `OPENAI_MODEL` — Already required; defaults to `gpt-4o-mini`
-  - `SEARCH_API_KEY` or `SERPAPI_KEY` — New; used for SerpAPI search
-  - `ONLINE_RETRIEVAL_ENABLED=true` — New; set to enable online retrieval
+- **Primary**: DuckDuckGo HTML search (free, no API key required) — searches html.duckduckgo.com and api.duckduckgo.com
+- **Better**: SerpAPI (Google Search API) when `SEARCH_API_KEY` or `SERPAPI_KEY` is provided
+- **Fallback**: Direct web page fetching using Node.js `fetch` for content extraction after search
 
-If `ONLINE_RETRIEVAL_ENABLED` is not set to `true`, the system uses only the source registry (original behavior).
+**No API key is required** for basic operation. DuckDuckGo is the default provider. SerpAPI is optional for improved results.
 
 ## 3. Required environment variables
 
@@ -110,9 +106,9 @@ Human review is preserved exactly as before:
 | `backend/src/models/VerificationRequest.js` | Added claimType field |
 | `backend/src/models/Source.js` | Added publisher field |
 | `backend/src/services/ai/verificationPrompt.js` | Updated instructions for retrieved evidence, new field semantics, safety contract |
-| `backend/src/config/env.js` | Added optional env var validation, ONLINE_RETRIEVAL_ENABLED logging |
-| `backend/.env` | Added SEARCH_API_KEY, SERPAPI_KEY, ONLINE_RETRIEVAL_ENABLED |
-| `backend/.env.example` | Added new env var examples |
+| `backend/src/config/env.js` | Added optional env var validation, logging |
+| `backend/.env` | Added SEARCH_API_KEY, SERPAPI_KEY (ONLINE_RETRIEVAL_ENABLED removed — always enabled) |
+| `backend/.env.example` | Added SEARCH_API_KEY, SERPAPI_KEY examples |
 | `frontend/src/pages/Verify.jsx` | Added technical failure state handling |
 | `frontend/src/components/verification/VerificationResult.jsx` | Full rewrite — shows evidence with tier/publisher/score/relationship, handles technical failure |
 | `frontend/src/pages/dashboard/Verification.jsx` | Shows claim type, retrieval method, evidence scores |
@@ -202,27 +198,42 @@ All changes are additive and backward compatible. Existing documents will have n
 
 ## 14. Exact production tests to run
 
-**TEST 1**: Submit "Juba is the capital city of South Sudan"
-- Expected: truthStatus: "verified" or "unverified" (depends on what search finds), evidenceSufficiency: "sufficient" (if authoritative sources found), evidence array populated with sources
-- Set `ONLINE_RETRIEVAL_ENABLED=true` and provide `SEARCH_API_KEY`
+**Root cause identified**: The online retrieval was gated behind `ONLINE_RETRIEVAL_ENABLED` env var (empty by default). When disabled, the system fell back to MongoDB source registry which had no South Sudan sources, resulting in empty evidence → insufficient evidence → `confidence: 0.35`, `aiGenerated: false`.
+
+**Critical bugs fixed**:
+1. **`attachSourceIds` threw on null sourceId** (verificationSchema.js:149) — online evidence has no MongoDB Source ID; function now gracefully skips sourceId attachment
+2. **`sourceId` was required** (VerificationResult.js:16) — evidence from web search has no Source document; changed to optional
+3. **Overbroad contradiction pattern** (relationshipClassifier.js) — `/is\s+in\s+(?!South\s+Sudan)(.+)/i` incorrectly classified "Juba is in Central Equatoria" as contradicting "Juba is the capital of South Sudan"; replaced with specific patterns
+
+**Fix for primary issue**:
+1. Removed `ONLINE_RETRIEVAL_ENABLED` gate — online retrieval always attempts
+2. Free DuckDuckGo HTML/API search used as default (no API key needed)
+3. SerpAPI used when key is available (better results)
+4. Added comprehensive diagnostic logging at every pipeline step
+5. `confidence: 0.35` only applies to genuine insufficient evidence; technical failures return 503
+6. Added `[Verification] Claim:`, `[OnlineRetriever] START`, `[OnlineRetriever] RESULT`, `[Verification] Evidence retrieval START/RESULT`, `[Verification] Pipeline complete` diagnostic logs
+
+**TEST 1**: Submit "Juba is the capital of South Sudan"
+- Expected: DuckDuckGo search finds sources (Wikipedia, constitution references) → evidence retrieved → sufficient → AI assessment → likely verified
+- Set `SEARCH_API_KEY` or `SERPAPI_KEY` for better results
 
 **TEST 2**: Submit "South Sudan became independent on 9 July 2011"
-- Expected: Retrieve evidence, verify based on what is found
+- Expected: Retrieve authoritative evidence, verify if evidence supports it
 
 **TEST 3**: Submit "Juba is the capital of Uganda"
-- Expected: Should retrieve evidence and assess (likely "false" if evidence contradicts, or "unverified" if insufficient)
+- Expected: Retrieve evidence, likely contradicted → false
 
 **TEST 4**: Submit "Juba is located in Central Equatoria State"
-- Expected: Retrieve evidence and verify
+- Expected: Retrieve authoritative evidence and verify
 
-**TEST 5**: Submit a claim with no reliable online evidence (e.g., "The elephant is the national animal of South Sudan")
-- Expected: evidenceSufficiency: "insufficient", reviewRequired: true, human review item created
+**TEST 5**: A claim for which reliable evidence genuinely cannot be found
+- Expected: unverified + human review (retrieval succeeded, evidence genuinely insufficient)
 
-**TEST 6**: Set `ONLINE_RETRIEVAL_ENABLED=true` but provide invalid/expired search API key, then submit a claim
-- Expected: HTTP 503 response, NO human review item created, error message "Verification temporarily unavailable"
+**TEST 6**: Simulate retrieval provider failure (network block, timeout)
+- Expected: 503 + verification temporarily unavailable + NO review request
 
-**TEST 7**: Submit a claim where online search returns conflicting sources
-- Expected: evidenceSufficiency: "conflicting", reviewRequired: true, AI assessment with contested status
+**TEST 7**: Conflicting reliable sources
+- Expected: conflicting evidence, contested assessment, human review
 
 ## 15. Render environment variables to configure
 
@@ -234,9 +245,8 @@ On Render, set the following in the service environment variables:
 | `JWT_SECRET` | (strong secret) |
 | `OPENAI_API_KEY` | (existing key) |
 | `OPENAI_MODEL` | `gpt-4o-mini` |
-| `SEARCH_API_KEY` or `SERPAPI_KEY` | (SerpAPI key if using online retrieval) |
-| `ONLINE_RETRIEVAL_ENABLED` | `true` (to enable online search) |
+| `SEARCH_API_KEY` or `SERPAPI_KEY` | (optional — SerpAPI for better search results; DuckDuckGo works without it) |
 | `CLIENT_URL` | (frontend URL) |
 | `PORT` | `5000` |
 
-If online retrieval is not needed, leave `ONLINE_RETRIEVAL_ENABLED` unset (defaults to disabled) and the system works with source registry only.
+DuckDuckGo search runs automatically without any API key configuration. No `ONLINE_RETRIEVAL_ENABLED` variable is needed.

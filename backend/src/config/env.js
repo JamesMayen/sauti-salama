@@ -40,7 +40,6 @@ const requiredEnvironmentVariables = [
 const optionalEnvironmentVariables = [
   "SEARCH_API_KEY",
   "SERPAPI_KEY",
-  "ONLINE_RETRIEVAL_ENABLED",
 ];
 
 export function validateEnvironment() {
@@ -76,5 +75,9 @@ export function validateEnvironment() {
 
   console.log(
     "Environment variables validated successfully."
+  );
+
+  console.log(
+    "Online evidence retrieval: enabled (DuckDuckGo default, SerpAPI optional)"
   );
 }
