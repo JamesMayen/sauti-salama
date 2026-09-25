@@ -48,6 +48,8 @@ validateEnvironment();
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 /*
 |--------------------------------------------------------------------------
 | Environment Configuration

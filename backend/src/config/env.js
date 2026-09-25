@@ -38,7 +38,6 @@ const requiredEnvironmentVariables = [
 ];
 
 const optionalEnvironmentVariables = [
-  "SEARCH_API_KEY",
   "SERPAPI_KEY",
 ];
 

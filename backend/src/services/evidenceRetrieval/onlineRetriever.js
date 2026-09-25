@@ -260,7 +260,7 @@ async function searchWeb(query, apiKey) {
 
 async function retrieveEvidenceForClaimOnline(claim, config = {}) {
   const {
-    searchApiKey = process.env.SEARCH_API_KEY || process.env.SERPAPI_KEY || null,
+    searchApiKey = (process.env.SERPAPI_KEY || "").trim(),
     maxQueries = 3,
     timeoutMs = 25000,
   } = config;
