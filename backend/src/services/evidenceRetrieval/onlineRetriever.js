@@ -18,6 +18,20 @@ function validateUrl(url) {
   }
 }
 
+/**
+ * Native fetch has no `timeout` option — it's silently ignored if you pass one.
+ * This wrapper uses AbortController so requests actually get cancelled.
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function searchWithSerpAPI(query, apiKey) {
   const url = new URL(SERPAPI_BASE);
   url.searchParams.set("q", query);
@@ -27,8 +41,33 @@ async function searchWithSerpAPI(query, apiKey) {
   url.searchParams.set("hl", "en");
   url.searchParams.set("gl", "ss");
 
-  const response = await fetch(url.toString(), { timeout: 15000 });
+  let response;
+  try {
+    response = await fetchWithTimeout(url.toString(), {}, 15000);
+  } catch (err) {
+    // Network failure or timeout (AbortError) — not an HTTP error response
+    console.error("[OnlineRetriever] SerpAPI request failed", {
+      query,
+      name: err.name,
+      message: err.message,
+    });
+    throw new AppError("Search provider returned an error.", 503, "SEARCH_PROVIDER_ERROR");
+  }
+
   if (!response.ok) {
+    // Capture the real reason before throwing the generic error, so it shows up in logs
+    let detail = null;
+    try {
+      detail = await response.json();
+    } catch {
+      detail = await response.text().catch(() => null);
+    }
+    console.error("[OnlineRetriever] SerpAPI raw error", {
+      query,
+      status: response.status,
+      statusText: response.statusText,
+      detail,
+    });
     throw new AppError("Search provider returned an error.", 503, "SEARCH_PROVIDER_ERROR");
   }
 
@@ -71,14 +110,17 @@ async function searchDuckDuckGo(query) {
     const url = new URL(DDG_HTML_BASE);
     url.searchParams.set("q", query);
 
-    const response = await fetch(url.toString(), {
-      timeout: 10000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
+    const response = await fetchWithTimeout(
+      url.toString(),
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
       },
-    });
+      10000
+    );
 
     if (!response.ok) return results;
 
@@ -105,8 +147,8 @@ async function searchDuckDuckGo(query) {
         searchMatch: query,
       });
     }
-  } catch {
-    // DuckDuckGo search failed silently
+  } catch (err) {
+    console.warn("[OnlineRetriever] DuckDuckGo HTML search failed", { query, error: err.message });
   }
 
   return results;
@@ -121,7 +163,7 @@ async function searchWithDDGAbstract(query) {
     url.searchParams.set("format", "json");
     url.searchParams.set("no_html", "1");
 
-    const response = await fetch(url.toString(), { timeout: 10000 });
+    const response = await fetchWithTimeout(url.toString(), {}, 10000);
     if (!response.ok) return results;
 
     const data = await response.json();
@@ -148,8 +190,8 @@ async function searchWithDDGAbstract(query) {
         });
       }
     }
-  } catch {
-    // DDG API failed silently
+  } catch (err) {
+    console.warn("[OnlineRetriever] DDG abstract API failed", { query, error: err.message });
   }
 
   return results;
@@ -159,7 +201,7 @@ async function fetchWebContent(url) {
   if (!validateUrl(url)) return null;
 
   try {
-    const response = await fetch(url, { timeout: 10000 });
+    const response = await fetchWithTimeout(url, {}, 10000);
     if (!response.ok) return null;
 
     const text = await response.text();
@@ -167,7 +209,8 @@ async function fetchWebContent(url) {
     const title = extractTitle(text);
 
     return { title, snippet, url };
-  } catch {
+  } catch (err) {
+    console.warn("[OnlineRetriever] fetchWebContent failed", { url, error: err.message });
     return null;
   }
 }
